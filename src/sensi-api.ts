@@ -27,20 +27,30 @@ export class SensiAPI {
   }
 
   async authenticate(): Promise<void> {
-    const form = new URLSearchParams();
-    form.set('client_id', 'fleet');
-    form.set('client_secret', 'JLFjJmketRhj>M9uoDhusYKyi?zUyNqhGB)H2XiwLEF#KcGKrRD2JZsDQ7ufNven');
-    form.set('grant_type', 'refresh_token');
-    form.set('refresh_token', this.refreshToken);
+    try {
+      const form = new URLSearchParams();
+      form.set('client_id', 'fleet');
+      form.set('client_secret', 'JLFjJmketRhj>M9uoDhusYKyi?zUyNqhGB)H2XiwLEF#KcGKrRD2JZsDQ7ufNven');
+      form.set('grant_type', 'refresh_token');
+      form.set('refresh_token', this.refreshToken);
 
-    const resp = await axios.post(this.oauthUrl, form.toString(), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', Accept: '*/*' },
-      timeout: 10000,
-    });
+      const resp = await axios.post(this.oauthUrl, form.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', Accept: '*/*' },
+        timeout: 10000,
+      });
 
-    this.accessToken = resp.data.access_token;
-    this.refreshToken = resp.data.refresh_token;
-    this.log.info('[Sensi] OAuth success: access token acquired');
+      if (!resp.data || typeof resp.data.access_token !== 'string') {
+        throw new Error('Invalid response: missing or malformed access_token');
+      }
+
+      this.accessToken = resp.data.access_token;
+      this.refreshToken = resp.data.refresh_token;
+      this.log.info('[Sensi] OAuth success: access token acquired');
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.log.error('[Sensi] Authentication failed:', errorMsg);
+      throw error;
+    }
   }
 
   private wsHeaders(): Record<string, string> {
@@ -50,6 +60,9 @@ export class SensiAPI {
   async connect(): Promise<void> {
     if (!this.accessToken) await this.authenticate();
 
+    // Close existing connection cleanly
+    this.closeWebSocket();
+
     this.ws = new WebSocket(this.wsUrl, { headers: this.wsHeaders() });
     this.ws.on('open', () => {
       this.log.info('[Sensi] WebSocket connected');
@@ -58,9 +71,23 @@ export class SensiAPI {
     this.ws.on('message', (data) => this.handleMessage(data));
     this.ws.on('close', () => this.scheduleReconnect('closed'));
     this.ws.on('error', (err) => {
-      this.log.error('[Sensi] WebSocket error', err);
+      this.log.error('[Sensi] WebSocket error:', err instanceof Error ? err.message : String(err));
       this.scheduleReconnect('error');
     });
+  }
+
+  private closeWebSocket(): void {
+    if (this.ws) {
+      try {
+        if (this.ws.readyState === WebSocket.OPEN) {
+          this.ws.close();
+        }
+      } catch (e) {
+        this.log.debug('[Sensi] Error closing WebSocket:', e);
+      }
+      this.ws = null;
+    }
+    this.stopKeepAlive();
   }
 
   private async handleMessage(raw: WebSocket.Data): Promise<void> {
@@ -85,7 +112,7 @@ export class SensiAPI {
         }
       }
     } catch (e) {
-      this.log.error('[Sensi] Failed to parse WS message', e);
+      this.log.error('[Sensi] Failed to parse WS message:', e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -94,7 +121,7 @@ export class SensiAPI {
       await this.authenticate();
       await this.connect();
     } catch (e) {
-      this.log.error('[Sensi] Reconnect failed', e);
+      this.log.error('[Sensi] Reconnect failed:', e instanceof Error ? e.message : String(e));
       this.scheduleReconnect('auth failed');
     }
   }
@@ -109,7 +136,7 @@ export class SensiAPI {
       try {
         await this.reconnectWithNewToken();
       } catch (e) {
-        this.log.error('[Sensi] Retry reconnect failed', e);
+        this.log.error('[Sensi] Retry reconnect failed:', e instanceof Error ? e.message : String(e));
       }
     }, 10000); // 10s backoff
   }
@@ -135,13 +162,15 @@ export class SensiAPI {
     this.listeners.add(listener);
   }
 
-  // Send commands
+  // Send commands using socket.io protocol
   private sendSet(json: any): void {
-    const frame = '421' + JSON.stringify(json);
+    // socket.io emit frame: '42' + JSON.stringify([event, data])
+    const frame = '42' + JSON.stringify(json);
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(frame);
+      this.log.debug('[Sensi] Command sent:', JSON.stringify(json));
     } else {
-      this.log.warn('[Sensi] WS not open. Dropping command.');
+      this.log.warn('[Sensi] WS not open. Dropping command:', JSON.stringify(json));
     }
   }
 
