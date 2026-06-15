@@ -1,3 +1,4 @@
+## Note: This is a pet project and may not be updated for long periods of time.  Please feel free to contribute your fixes! 
 
 # Homebridge Sensi
 
