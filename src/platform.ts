@@ -47,6 +47,8 @@ export class SensiPlatform implements DynamicPlatformPlugin {
         this.handleDeviceUpdate(dev);
       });
 
+      this.sensiApi.startPolling();
+
       this.log.info("[Sensi] Platform initialized successfully");
     } catch (error) {
       this.log.error(

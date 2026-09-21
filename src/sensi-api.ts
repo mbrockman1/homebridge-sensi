@@ -49,6 +49,14 @@ export class SensiAPI {
   private readonly commandQueueTtlMs = 30000;
   private manualReconnectTimer: NodeJS.Timeout | null = null;
 
+  // The server sends a full `state` snapshot on connect but doesn't reliably
+  // push changes made on the physical thermostat over a long-lived socket.
+  // The reference Home Assistant integration (iprak/sensi) works around this
+  // by reconnecting every 30s, so we do the same.
+  private readonly pollIntervalMs = 30_000;
+  private pollTimer: NodeJS.Timeout | null = null;
+  private refreshing = false;
+
   constructor(
     refreshToken: string,
     private readonly log: Logging,
@@ -200,6 +208,26 @@ export class SensiAPI {
         }
       }
     });
+  }
+
+  startPolling(): void {
+    if (this.pollTimer) return;
+    this.pollTimer = setInterval(() => {
+      if (this.refreshing) return;
+      this.refreshing = true;
+      this.log.debug("[Sensi] Reconnecting to refresh device state");
+      this.connect()
+        .catch((e) =>
+          this.log.error(
+            "[Sensi] Periodic refresh failed:",
+            e instanceof Error ? e.message : String(e),
+          ),
+        )
+        .finally(() => {
+          this.refreshing = false;
+        });
+    }, this.pollIntervalMs);
+    this.pollTimer.unref?.();
   }
 
   private teardownSocket(): void {
