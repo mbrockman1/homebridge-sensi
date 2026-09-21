@@ -26,13 +26,8 @@ export class SensiSensorAccessory {
 
   private updateFromState(dev: DeviceStatePacket): void {
     try {
-      // See SensiThermostatAccessory.updateFromState: live pushes from the
-      // physical device can be partial deltas, so merge rather than overwrite.
-      const previous = this.accessory.context.lastState?.state ?? {};
-      const mergedState = { ...previous, ...(dev.state ?? {}) };
-      const merged: DeviceStatePacket = { ...dev, state: mergedState };
-      this.accessory.context.lastState = merged;
-      const s = mergedState;
+      this.accessory.context.lastState = dev;
+      const s = dev.state;
       if (!s) return;
 
       this.log.debug('[Sensi] Sensor accessory device state update', { id: dev.icd_id, state: s });
