@@ -9,6 +9,7 @@ import {
 import { SensiAPI, DeviceStatePacket } from "./sensi-api";
 import { SensiThermostatAccessory } from "./sensi-thermostat-accessory";
 import { SensiSensorAccessory } from "./sensi-sensor-accessory";
+import { SensiFanAccessory } from "./sensi-fan-accessory";
 
 export class SensiPlatform implements DynamicPlatformPlugin {
   private readonly log: Logging;
@@ -114,6 +115,14 @@ export class SensiPlatform implements DynamicPlatformPlugin {
 
       // Register sensor accessory
       new SensiSensorAccessory(
+        this.log,
+        accessory,
+        this.sensiApi,
+        this.api.hap,
+      );
+
+      // Register fan accessory
+      new SensiFanAccessory(
         this.log,
         accessory,
         this.sensiApi,
