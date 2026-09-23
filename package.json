@@ -25,7 +25,8 @@
     "socket.io-client": "^4.8.1",
     "homebridge": "^1.8.0",
     "rimraf": "^5.0.5",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "@types/node": "^20.11.0"
   },
   "repository": {
     "type": "git",
